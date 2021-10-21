@@ -1,0 +1,125 @@
+# 日本語版 matplotlib
+!pip install japanize-matplotlib
+
+# Mecabのインストール
+!apt install aptitude
+!aptitude install mecab libmecab-dev mecab-ipadic-utf8 git make curl xz-utils file -y
+!pip install mecab-python3
+!apt-get -q -y install sudo file mecab libmecab-dev mecab-ipadic-utf8 git curl python-mecab > /dev/null
+!git clone --depth 1 https://github.com/neologd/mecab-ipadic-neologd.git > /dev/null 
+!echo yes | mecab-ipadic-neologd/bin/install-mecab-ipadic-neologd -n > /dev/null 2>&1
+!pip install mecab-python3 > /dev/null
+
+# シンボリックリンクによるエラー回避
+!ln -s /etc/mecabrc /usr/local/etc/mecabrc
+
+import glob                                          # ファイル一覧取得用ライブラリ
+import numpy as np                                   # 数値計算用ライブラリ
+import pandas as pd                                  # データ分析ライブラリ
+import matplotlib as plt                             # 可視化ライブラリ
+import japanize_matplotlib                           # 日本語化matplotlib
+import seaborn as sns                                # データ可視化ライブラリ
+sns.set(font="IPAexGothic")                          # 日本語フォント設定
+import MeCab                                         # 形態素解析ライブラリ
+import gensim                                        # Word2vecの類似度計算用のライブラリ
+from sklearn.model_selection import train_test_split # 訓練データとテストデータ分割のライブラリ
+from sklearn.metrics import accuracy_score           # 精度計算のライブラリ
+from lxml import html                                # html解析ライブラリ
+import requests                                      # httpアクセスライブラリ
+import subprocess
+
+# Wikipediaで学習済みのWord2vecモデルの取得
+!wget https://github.com/singletongue/WikiEntVec/releases/download/20190520/jawiki.word_vectors.300d.txt.bz2
+!bunzip2 jawiki.word_vectors.300d.txt.bz2
+# ライブドアニュースのオープンデータの取得
+!wget https://www.rondhuit.com/download/ldcc-20140209.tar.gz
+!tar xfz ldcc-20140209.tar.gz
+!wget -O ldn_categories.csv 'https://drive.google.com/uc?export=download&id=1aSpXlLE3vm2QTZGFwm1Y7c-uvHDRBJwB'
+
+import MeCab
+
+m = MeCab.Tagger()
+sample_txt = "彼女はペンパイナッポーアッポーペンと恋ダンスを踊った。"
+print("Mecab:\n", m.parse(sample_txt))
+
+def devide_words(text):
+  path = "-d /usr/lib/x86_64-linux-gnu/mecab/dic/mecab-ipadic-neologd -Owakati"
+  m = MeCab.Tagger(path)
+  return m.parse(text).split()
+devide_words("彼女はペンパイナッポーアッポーペンと恋ダンスを踊った。")
+word2vec = gensim.models.KeyedVectors.load_word2vec_format("jawiki.word_vectors.300d.txt")
+word2vec['奈良']
+word2vec.most_similar(['死ね'])
+category_data = pd.read_csv('ldn_categories2.csv')
+category_data
+from google.colab import drive
+drive.mount('/content/drive')
+sns.countplot(x='label', data=category_data)
+def load_news(filepath):
+  file = open(filepath)
+  s = file.read()  
+  file.close()
+  return s
+  text = load_news('/content/drive/MyDrive/dataset/topic-tweet-5903225.txt')
+print(text)
+text = load_news('/content/drive/MyDrive/dataset/topic-tweet-5903225.txt')
+words = devide_words(text)
+print(words)
+vecs = word2vec[words]
+'猫' in word2vec.vocab
+'XXXXXXXXXX' in word2vec.vocab
+list1 = [1, 2, 3, 4, 5, 6, 7, 8, 9, 10]
+list2 = list(filter(lambda x: x % 2 == 0, list1))
+print(list2)
+words = devide_words('吾輩はXXXXXXXXXXである')
+filtered_words = list(filter(lambda s : s in word2vec.vocab, words))
+print(filtered_words)
+vecs = word2vec[filtered_words]
+averaged_vec = np.average(vecs, axis=0)
+print(averaged_vec)
+def calc_feature_vec(text):
+  words =  m.parse(text).split()       
+  filtered_words =  list(filter(lambda a : a in word2vec.vocab, words))
+  vecs = word2vec[filtered_words]    
+  averaged_vec =  np.average(vecs, axis=0)
+  return averaged_vec
+text = load_news('/content/drive/MyDrive/dataset/topic-tweet-5903225.txt')
+print(text)
+calc_feature_vec(text)
+feature_vecs = []
+filepaths = glob.glob('/content/drive/MyDrive/dataset/topic-tweet-*.txt')
+filepaths.sort()
+for filepath in filepaths:
+  text = load_news(filepath)
+  feature_vec = calc_feature_vec(text)
+  feature_vecs.append(feature_vec)
+labels = category_data['label'].values.tolist()
+data_train, data_test, label_train, label_test = train_test_split(feature_vecs, labels, test_size=0.1, random_state=42)
+type (data_test)
+
+# 機械学習モデルライブラリの読み込み
+from sklearn.svm import SVC
+
+# 機械学習モデルのオブジェクト生成と設定
+estimator = SVC(kernel='rbf', gamma=3.5, C=5.25)
+
+# 訓練の実施
+estimator.fit(data_train, label_train)
+
+# テストデータを使った予測
+label_predict = estimator.predict(data_test)
+
+# テストデータを使った予測に関して、実際の正解ラベルと比較し精度を出力する
+print (accuracy_score(label_test, label_predict))
+
+def calc_page_feature_vec(url):
+  page = requests.get(url)
+  tree = html.fromstring(page.content)
+  text = ''.join(tree.xpath('//*[@id="article-body"]/article/header/h1/text()'))
+  text = text + ''.join(tree.xpath('//*[@id="article-body"]/article/div[1]//*/text()'))
+  return calc_feature_vec(text)
+
+feature_vec = calc_page_feature_vec('https://news.livedoor.com/article/detail/18354980/')
+print(feature_vec)
+feature_vec = calc_feature_vec('今日もめっちゃいい天気！')
+estimator.predict([feature_vec])
